@@ -182,3 +182,11 @@ jobs:
 ```
 
 * Commmit and push your code changes back into your remote GitHub repository
+* Go to the `Actions` tab again and run the `Provision and Deploy` action
+
+You'll observe how the GitHub Action logs into Azure, then uses `azd provision` and `azd deploy` to build your app's infrastructure and then deploy your app into it.
+
+### Adding a Postgres database
+
+In this step, you'll stop using in-memory storage and add support for storing data in a Postgres database. 
+

@@ -86,3 +86,99 @@ In this phase you'll automate the process of building the `AspireTodo` source co
 * Commit the YAML file back to your `main` branch once you've made these changes
 * Browse to the `Actions` tab in GitHub and watch your continuous integration build your app
 
+At this point, make sure you clone your changes back to your DevBox or Virtual Machine, so you have the changes you just made in the browser back down on your workstation. 
+
+### Setting up Continuous Deployment
+
+Since you already have an AZD environment provisioned in Azure *and* the local configuration specifying that AZD environment as the destination to which code should be deployed when changes happen, and since AZD works the same in CI/CD as it does locally, the process is simple. 
+
+* At the command line, type the command
+
+    ```
+    azd pipeline config --auth-type client-credentials --provider github --principal-name augmentrprincipal --environment <yourEnvironmentNameHere>
+    ```
+
+    > Note: The parameter `augmentrprincipal` is a managed identity created for another sample, but it'll work here, too. Since not everyone in the class may have (or need) the permissions required to create Managed Identities in the R&D sub, we'll just use this one for now.
+
+* Go to your GitHub repositorie's `Settings` area, and you'll notice that both secrets and variables have been injected into your repository by the `azd pipeline config` step
+* Create a new file in the `.github\workflows` folder, named `continousdeploy.yml` and place this YAML code into it
+
+```yaml
+name: Provision and Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+    steps:
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.102
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install workload
+        run: dotnet workload install aspire
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore
+
+      - name: Install azd
+        uses: Azure/setup-azd@v0.1.0
+      
+      - name: Log in with Azure (Client Credentials)
+        if: ${{ env.AZURE_CREDENTIALS != '' }}
+        run: |
+          $info = $Env:AZURE_CREDENTIALS | ConvertFrom-Json -AsHashtable;
+          Write-Host "::add-mask::$($info.clientSecret)"
+
+          azd auth login `
+            --client-id "$($info.clientId)" `
+            --client-secret "$($info.clientSecret)" `
+            --tenant-id "$($info.tenantId)"
+        shell: pwsh
+        env:
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in with Azure (Federated Credentials)
+        if: ${{ env.AZURE_CLIENT_ID != '' }}
+        run: |
+          azd auth login `
+            --client-id "$Env:AZURE_CLIENT_ID" `
+            --federated-credential-provider "github" `
+            --tenant-id "$Env:AZURE_TENANT_ID" --debug
+        shell: pwsh
+
+      - name: Provision Infrastructure
+        run: azd provision --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+
+      - name: Deploy App
+        run: azd deploy --no-prompt
+        env:
+          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZD_INITIAL_ENVIRONMENT_CONFIG: ${{ secrets.AZD_INITIAL_ENVIRONMENT_CONFIG }}
+
+```
+
+* Commmit and push your code changes back into your remote GitHub repository

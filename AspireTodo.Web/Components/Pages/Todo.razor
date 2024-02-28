@@ -1,0 +1,43 @@
+﻿@page "/"
+@attribute [StreamRendering(true)]
+@attribute [OutputCache(Duration = 5)]
+
+@inject TodoApiClient TodoClient
+
+<PageTitle>AspireTodo</PageTitle>
+
+<h1>Todo Items</h1>
+
+<p>These are the things we AspireTodo.</p>
+
+@if (todos == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var todo in todos.Where(x => !x.IsCompleted))
+            {
+                <tr>
+                    <td>@todo.Description</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private TodoItem[]? todos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        todos = await TodoClient.GetAllTodoItems();
+    }
+}

@@ -67,3 +67,22 @@ This should be the end of the stuff we get through in Day 1. We'll kick off Day 
 
 During Day 2, you'll add Continuous Integration / Continuous Deploy (CI/CD) capabilities to your GitHub repository, add database support, and use asynchrous messaging rather than direct HTTP calls between your frontend and backend apps. 
 
+### Automate dotnet build
+
+In this phase you'll automate the process of building the `AspireTodo` source code whenever you want, or, whenever you commit. 
+
+* Open your GitHub AspireTodo repository and go to the `Actions` tab
+* Search for the `Continuous integration` area
+* Find the `.NET` item in this section, labelled `Build and test a .NET or ASP.NET Core project` and click the `Configure` button
+* Change the `checkout` and `setup-dotnet` tasks to be `v4`
+* Change the `dotnet-version` from `6.0.x` to `8.0.102`
+* Add a step between the change you just made and the `Restore dependencies` step containing this YAML code
+
+    ```yaml
+    - name: Install workload
+      run: dotnet workload install aspire
+    ```
+
+* Commit the YAML file back to your `main` branch once you've made these changes
+* Browse to the `Actions` tab in GitHub and watch your continuous integration build your app
+

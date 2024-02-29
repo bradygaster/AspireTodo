@@ -1,6 +1,7 @@
 ﻿@page "/"
-@attribute [StreamRendering(true)]
-@attribute [OutputCache(Duration = 5)]
+@rendermode InteractiveServer
+@using Azure.Storage.Queues
+@inject QueueServiceClient queueServiceClient
 
 @inject TodoApiClient TodoClient
 
@@ -30,14 +31,31 @@ else
                 </tr>
             }
         </tbody>
+        <tfoot>
+            <tr>
+                <td>
+                    <input type="text" @bind="@newTodoItemDescription" />
+                    <input type="button" class="btn btn-primary" @onclick="SaveTodo" value="Save" />
+                </td>
+            </tr>
+        </tfoot>
     </table>
 }
 
 @code {
     private TodoItem[]? todos;
+    private string newTodoItemDescription = "";
 
     protected override async Task OnInitializedAsync()
     {
+        await queueServiceClient.GetQueueClient("incoming").CreateIfNotExistsAsync();
         todos = await TodoClient.GetAllTodoItems();
+    }
+
+    private async Task SaveTodo()
+    {
+        if (!string.IsNullOrEmpty(newTodoItemDescription))
+            await queueServiceClient.GetQueueClient("incoming").SendMessageAsync(newTodoItemDescription);
+        newTodoItemDescription = "";
     }
 }

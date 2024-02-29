@@ -319,6 +319,10 @@ At this point, you're finished with the code required to send messages using an 
 
 ---
 
+### Updating your Azure environment
+
+Now that you've added Azure Storage, when you re-run your Provision & Deploy GitHub Action Workflow again, you'll notice a new resource exists in the resource group that was previously not there. Now you also have an Azure Storage Account. If you go into the Azure portal and go to the Queues section of the Azure Portal for your new Storage Account, you'll see the messages appearing when you hit the "Send" button on the frontend app. 
+
 ### Receiving Messages
 
 In this phase, you'll add code to the backend project to start receiving the queued messages, so they can be added to the list of todo items asynchronously. 

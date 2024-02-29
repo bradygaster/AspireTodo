@@ -327,3 +327,113 @@ Now that you've added Azure Storage, when you re-run your Provision & Deploy Git
 
 In this phase, you'll add code to the backend project to start receiving the queued messages, so they can be added to the list of todo items asynchronously. 
 
+* First, add memory cache to the backend project, and use it to store the list of todo items rather than storing it as a variable in the `Program.cs` by changing the code in the `ApiService` project's `Program.cs` file to contain this code:
+
+  ```csharp
+  using Microsoft.Extensions.Caching.Memory;
+
+  var builder = WebApplication.CreateBuilder(args);
+
+  // Add service defaults & Aspire components.
+  builder.AddServiceDefaults();
+
+  // Add memory caching to store the todos on the server for now
+  builder.Services.AddMemoryCache();
+
+  // Add services to the container.
+  builder.Services.AddProblemDetails();
+
+  var app = builder.Build();
+
+  // Configure the HTTP request pipeline.
+  app.UseExceptionHandler();
+
+  app.Services.GetRequiredService<IMemoryCache>().Set("todos", new List<TodoItem>
+  {
+      new TodoItem("Build the API", false),
+      new TodoItem("Build the Frontend", false),
+      new TodoItem("Deploy the app", false),
+  });
+
+  // Http Api that returns the full list of todos.
+  app.MapGet("/todos", (IMemoryCache memoryCache) => memoryCache.Get<TodoItem[]>("todos"));
+
+  app.MapDefaultEndpoints();
+
+  app.Run();
+
+  record TodoItem(string Description, bool IsCompleted) { }
+  ```
+
+* Run the app again to validate that everything is still working as expected, and that your app still shows the 3 todo items it was already showing when the app starts up
+
+* Add a new file to the `ApiService` project named `QueueWorker.cs` and paste this code into it to add a background worker class that watches the Azure Queue and saves incoming queue messages as new todo items. 
+
+  ```csharp
+  using Azure.Storage.Queues;
+  using Azure.Storage.Queues.Models;
+  using Microsoft.Extensions.Caching.Memory;
+
+  public class QueueWorker(QueueServiceClient queueServiceClient, 
+      IMemoryCache memoryCache,
+      ILogger<QueueWorker> logger) : BackgroundService
+  {
+      private QueueServiceClient queueServiceClient = queueServiceClient;
+      private IMemoryCache memoryCache = memoryCache;
+      private readonly ILogger<QueueWorker> logger = logger;
+
+      public override async Task StartAsync(CancellationToken cancellationToken)
+      {
+          await queueServiceClient.GetQueueClient("incoming").CreateIfNotExistsAsync();
+          await base.StartAsync(cancellationToken);
+      }
+
+      protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+      {
+          while (!stoppingToken.IsCancellationRequested)
+          {
+              var existingTodos = memoryCache.Get<List<TodoItem>>("todos");
+              var queue = queueServiceClient.GetQueueClient("incoming");
+
+              QueueMessage[] queuedMessages = await queue.ReceiveMessagesAsync(1, 
+                  TimeSpan.FromSeconds(5));
+              
+              foreach (var message in queuedMessages)
+              {
+                  if (message.DequeueCount <= 2)
+                  {
+                      if(existingTodos != null && !existingTodos.Any(x => x.Description.Equals(message.MessageText, 
+                          StringComparison.InvariantCultureIgnoreCase)))
+                      {  
+                          existingTodos.Add(new TodoItem(message.MessageText, false));
+                          memoryCache.Set<List<TodoItem>>("todos", existingTodos);
+                      }
+
+                      await queue.DeleteMessageAsync(message.MessageId, message.PopReceipt);
+                  }
+              }
+
+              logger.LogInformation($"Worker running at {DateTime.Now}");
+
+              await Task.Delay(1000);
+          }
+      }
+  }
+  ```
+
+* The final step you need to complete to start processing incoming messages is to use the `QueueService` class as a hosted service in the `apiservice` project's `Program.cs`. To do this, add this code after the call to `builder.AddAzureQueueService`:
+
+  ```csharp
+  // Add the QueueWorker
+  builder.Services.AddHostedService<QueueWorker>();
+  ```
+
+Now, you can run the app again and this time, the new todo form should work. Note, the list probably won't refresh as soon as you post a new message; that's because the `QueueWorker` runs once a second to process the incoming messages that are still in the queue. You'd need to add polling or some sort of event-based mechanism (like even another queue!) to update the user interface when the list changes. We won't do that in this class (feel free to do so if you have the time), but it is one of the considerations developers using asynchronous messaging need to make when building these kinds of distributed applications. 
+
+If you re-deploy the app now using the Provision & Deploy CI/CD action after committing your code, you'll see all of the new functionality light up. 
+
+---
+
+### Storing data in a Postgres database
+
+In this final phase of the exercises, you'll add a persistent database to the equation so your todo data persists even when the app restarts.

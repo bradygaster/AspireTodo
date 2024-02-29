@@ -18,6 +18,10 @@ You'l create a basic project and then learn how to run it and examine how the ap
 * Observe how the Trace node provides distributed tracing as users hit the frontend of the site
 * Stop the debugger
 
+Next, you'll start editing the code to turn it into your very own Todo app. 
+
+---
+
 ### Change the code to be a "Todo" app
 
 In this phase, you'll make some basic modifications to the backend API and frontend Web project to turn the template's content into a real Todo app. 
@@ -31,6 +35,10 @@ In this phase, you'll make some basic modifications to the backend API and front
 * Change the `Web` project's `Layout/NavMenu.razor` so that it only has the `Home` link, deleting `Weather` and `Counter`, but change the link text to `Todo`
 * Edit the `Web` project's `Pages/Todo.razor` file to display `TodoItem` objects instead of the old `WeatherForecast` objects, using the `TodoApiClient` class instead of the `WeatherApiClient` class
 * Edit the `Web` project's `Pages/Todo.razor` file such that it is what renders in the browser when the `/` (root) endpoint is called from a web browser
+
+With these changes made, you're ready to deploy the app right up to Azure to get started learning the platform's components. 
+
+---
 
 ### Deploy the app to Azure
 
@@ -53,6 +61,10 @@ In this phase, you'll publish your new AspireTodo app to Azure using the Azure D
 * Browse to the Azure portal and see the variety of resources you've created
 * Click on the `webfrontend` Azure Container App resource to view the overview of the app 
 * Explore the `Ingress` area for both the `backendapi` and `webfrontend` container apps to take note of how the frontend is available via the open Internet, whereas the backend API app is private and secure
+
+With the app published manually, you're ready to save your code and get ready for Day 2. 
+
+---
 
 ### Push your app into a GitHub repo
 
@@ -87,6 +99,8 @@ In this phase you'll automate the process of building the `AspireTodo` source co
 * Browse to the `Actions` tab in GitHub and watch your continuous integration build your app
 
 At this point, make sure you clone your changes back to your DevBox or Virtual Machine, so you have the changes you just made in the browser back down on your workstation. 
+
+---
 
 ### Setting up Continuous Deployment
 
@@ -186,7 +200,126 @@ jobs:
 
 You'll observe how the GitHub Action logs into Azure, then uses `azd provision` and `azd deploy` to build your app's infrastructure and then deploy your app into it.
 
-### Adding a Postgres database
+---
 
-In this step, you'll stop using in-memory storage and add support for storing data in a Postgres database. 
+### Adding messaging
+
+In this phase, you'll add messaging to the app so the frontend can be used to add new items to your todo list. The frontend will be used to collect a new todo item. It will drop a message on an Azure Storage Queue. You'll add a new `BackgroundWorker` class to the backend project that will receive the incoming messages and add them to the server-side todo list. 
+
+* Add the `Aspire.Azure.Storage.Queues` package (version `8.0.0-preview.3.24105.21`) to both the `AppHost`, `ApiService`, and `Web` projects
+* Add the `Aspire.Hosting.Azure` package (version `8.0.0-preview.3.24105.21`) to the `AppHost` project
+* Update the `AppHost` project's `Program.cs` so that it contains a new service - the Azure Storage reference, along with a second reference to the Queue service Azure Storage offers for asynchronous messaging. 
+
+  ```csharp
+  var builder = DistributedApplication.CreateBuilder(args);
+
+  var storage = builder.AddAzureStorage("azureStorage").UseEmulator();
+
+  var queues = storage.AddQueues("azureQueues");
+
+  var apiService = builder.AddProject<Projects.AspireTodo_ApiService>("apiservice")
+      .WithReference(queues);
+
+  var frontend = builder.AddProject<Projects.AspireTodo_Web>("webfrontend")
+      .WithReference(queues)
+      .WithReference(apiService);
+
+  builder.Build().Run();
+  ```
+
+With Queueing activated app-wide, you can now add support for sending messages into a queue when they're received from the frontend. 
+
+> Note: At this point, when you try to run the `AspireTodo` project, if you lack Docker Desktop, you'll be prompted to install it. That could take about a half-hour, depending on how powerful your machine is (it took about 10 minutes in a new DevBox).
+
+---
+
+### Sending Messages
+
+In this phase, you'll add code to the frontend project that will accept user input and drop it into a queue. 
+
+* In the `Web` project's `Program.cs`, use the `AddAzureQueueService` method to add queueing support to the frontend project
+
+  ```csharp
+  // Add service defaults & Aspire components.
+  builder.AddServiceDefaults(); // this will be there already
+
+  // Add Storage Queue Support
+  builder.AddAzureQueueService("azureQueues");
+  ```
+
+* In the `Web` project's `Componentns\Pages\Todo.razor` file, replace the code you have with this update: 
+
+  ```html
+  @page "/"
+  @rendermode InteractiveServer
+  @using Azure.Storage.Queues
+  @inject QueueServiceClient queueServiceClient
+
+  @inject TodoApiClient TodoClient
+
+  <PageTitle>AspireTodo</PageTitle>
+
+  <h1>Todo Items</h1>
+
+  <p>These are the things we AspireTodo.</p>
+
+  @if (todos == null)
+  {
+      <p><em>Loading...</em></p>
+  }
+  else
+  {
+      <table class="table">
+          <thead>
+              <tr>
+                  <th>Description</th>
+              </tr>
+          </thead>
+          <tbody>
+              @foreach (var todo in todos.Where(x => !x.IsCompleted))
+              {
+                  <tr>
+                      <td>@todo.Description</td>
+                  </tr>
+              }
+          </tbody>
+          <tfoot>
+              <tr>
+                  <td>
+                      <input type="text" @bind="@newTodoItemDescription" />
+                      <input type="button" class="btn btn-primary" @onclick="SaveTodo" value="Save" />
+                  </td>
+              </tr>
+          </tfoot>
+      </table>
+  }
+
+  @code {
+      private TodoItem[]? todos;
+      private string newTodoItemDescription = "";
+
+      protected override async Task OnInitializedAsync()
+      {
+          await queueServiceClient.GetQueueClient("incoming").CreateIfNotExistsAsync();
+          todos = await TodoClient.GetAllTodoItems();
+      }
+
+      private async Task SaveTodo()
+      {
+          if (!string.IsNullOrEmpty(newTodoItemDescription))
+              await queueServiceClient.GetQueueClient("incoming").SendMessageAsync(newTodoItemDescription);
+          newTodoItemDescription = "";
+      }
+  }
+  ```
+
+* Run the app and post a few new todo items - you won't see the list update yet, but if you review the logs in the Aspire dashboard you'll see the messages are being sent 
+
+At this point, you're finished with the code required to send messages using an Azure Queue. Commit your code back to the GitHub repository and get ready for the next phase. 
+
+---
+
+### Receiving Messages
+
+In this phase, you'll add code to the backend project to start receiving the queued messages, so they can be added to the list of todo items asynchronously. 
 

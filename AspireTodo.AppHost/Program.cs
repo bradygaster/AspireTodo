@@ -1,8 +1,8 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-var storage = builder.AddAzureStorage("azurestorage").UseEmulator();
+var storage = builder.AddAzureStorage("storage").UseEmulator();
 
-var queues = storage.AddQueues("azurequeues");
+var queues = storage.AddQueues("queues");
 
 var apiService = builder.AddProject<Projects.AspireTodo_ApiService>("apiservice")
     .WithReference(queues);

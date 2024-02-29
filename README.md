@@ -213,9 +213,9 @@ In this phase, you'll add messaging to the app so the frontend can be used to ad
   ```csharp
   var builder = DistributedApplication.CreateBuilder(args);
 
-  var storage = builder.AddAzureStorage("azurestorage").UseEmulator();
+  var storage = builder.AddAzureStorage("storage").UseEmulator();
 
-  var queues = storage.AddQueues("azurequeues");
+  var queues = storage.AddQueues("queues");
 
   var apiService = builder.AddProject<Projects.AspireTodo_ApiService>("apiservice")
       .WithReference(queues);
@@ -244,7 +244,7 @@ In this phase, you'll add code to the frontend project that will accept user inp
   builder.AddServiceDefaults(); // this will be there already
 
   // Add Storage Queue Support
-  builder.AddAzureQueueService("azurequeues");
+  builder.AddAzureQueueService("queues");
   ```
 
 * In the `Web` project's `Componentns\Pages\Todo.razor` file, replace the code you have with this update: 

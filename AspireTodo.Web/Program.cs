@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 // Add Storage Queue Support
-builder.AddAzureQueueService("azureQueues");
+builder.AddAzureQueueService("queues");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

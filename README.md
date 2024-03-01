@@ -437,3 +437,57 @@ If you re-deploy the app now using the Provision & Deploy CI/CD action after com
 ### Storing data in a Postgres database
 
 In this final phase of the exercises, you'll add a persistent database to the equation so your todo data persists even when the app restarts.
+
+* Add a new Web API project, enlisting in Aspire orchestration (and uncheck controller usage so you get Minimal APIs) named `AspireTodo.TodoDatabaseManager`
+* Like with the `ApiService` project, remove all the "Weather" related code from the `Program.cs` when the project is added 
+* Add a reference to the Aspire component `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL` (version `8.0.0-preview.3.24105.21`)
+* Add a reference to the NuGet package `Microsoft.EntityFrameworkCore.Design` 
+
+* Add a new file named `DatabaseModels.cs` to the `TodoDatabaseManager` project. Paste this code into that file:
+
+  ```csharp
+  using Microsoft.EntityFrameworkCore;
+  using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+  namespace AspireTodo.TodoDatabaseManager;
+
+  public class Todo
+  {
+      public int Id { get; set; }
+      public string Description { get; set; }
+      public bool IsCompleted { get; set; }
+  }
+
+  public class TodoDatabaseDbContext(DbContextOptions<TodoDatabaseDbContext> options) : DbContext(options)
+  {
+      public DbSet<Todo> TodoItems => Set<Todo>();
+
+      protected override void OnModelCreating(ModelBuilder builder)
+      {
+          DefineTodoType(builder.Entity<Todo>());
+      }
+
+      private static void DefineTodoType(EntityTypeBuilder<Todo> builder)
+      {
+          builder.ToTable("todo");
+
+          builder.HasKey(ci => ci.Id);
+
+          builder.Property(ci => ci.Id)
+              .UseHiLo("todo_type_hilo")
+              .IsRequired();
+
+          builder.Property(cb => cb.Description)
+              .IsRequired()
+              .HasMaxLength(128);
+      }
+  }
+  ```
+
+* Install the .NET EF tool by entering this command at your terminal:
+
+  ```
+  dotnet tool install --global dotnet-ef --version 8.0.1
+  ```
+
+* 

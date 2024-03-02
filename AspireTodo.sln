@@ -15,7 +15,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		README.md = README.md
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AspireTodo.TodoDatabaseManager", "AspireToDo.TodoDatabaseManager\AspireTodo.TodoDatabaseManager.csproj", "{B9906A25-0D3A-4B4A-A16F-26394F606588}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AspireTodo.TodoDatabaseManager", "AspireTodo.TodoDatabaseManager\AspireTodo.TodoDatabaseManager.csproj", "{B9906A25-0D3A-4B4A-A16F-26394F606588}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AspireTodo.TodoDatabase", "AspireTodo.TodoDatabase\AspireTodo.TodoDatabase.csproj", "{569C89BB-DC62-42D1-83F2-80143CD6D930}"
 EndProject

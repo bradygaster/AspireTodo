@@ -10,7 +10,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\AspireTodo.ApiService\AspireTodo.ApiService.csproj" />
-		<ProjectReference Include="..\AspireToDo.TodoDatabaseManager\AspireTodo.TodoDatabaseManager.csproj" />
+		<ProjectReference Include="..\AspireTodo.TodoDatabaseManager\AspireTodo.TodoDatabaseManager.csproj" />
 		<ProjectReference Include="..\AspireTodo.Web\AspireTodo.Web.csproj" />
 	</ItemGroup>
 

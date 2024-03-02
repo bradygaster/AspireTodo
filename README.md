@@ -29,7 +29,7 @@ In this phase, you'll make some basic modifications to the backend API and front
 * Change `WeatherApiClient` to `TodoApiClient`
 * Reflect the type name change in the `Web` project's `Program.cs` during build-up
 * Change the `WeatherForecast` record types in both the `ApiService` project and the `Web` project into `TodoItem` record types, with a `Description` string property and a `IsCompleted` bool property
-* Change the `ApiService` project's `Program.cs` such that it returns a `List<ToDoItem>` at the endpoint `/todos` and build the list in the `Program.cs` file with a sample list of `TodoItem` objects
+* Change the `ApiService` project's `Program.cs` such that it returns a `List<TodoItem>` at the endpoint `/todos` and build the list in the `Program.cs` file with a sample list of `TodoItem` objects
 * Rename the `Web` project's `Weather.razor` in the `Pages` directory to `Todos.razor`
 * Delete the `Counter.razor` and `Home.razor` files from the `Web` project's `Pages` folder
 * Change the `Web` project's `Layout/NavMenu.razor` so that it only has the `Home` link, deleting `Weather` and `Counter`, but change the link text to `Todo`

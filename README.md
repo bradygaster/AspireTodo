@@ -29,7 +29,7 @@ In this phase, you'll make some basic modifications to the backend API and front
 * Change `WeatherApiClient` to `TodoApiClient`
 * Reflect the type name change in the `Web` project's `Program.cs` during build-up
 * Change the `WeatherForecast` record types in both the `ApiService` project and the `Web` project into `TodoItem` record types, with a `Description` string property and a `IsCompleted` bool property
-* Change the `ApiService` project's `Program.cs` such that it returns a `List<ToDoItem>` at the endpoint `/todos` and build the list in the `Program.cs` file with a sample list of `TodoItem` objects
+* Change the `ApiService` project's `Program.cs` such that it returns a `List<TodoItem>` at the endpoint `/todos` and build the list in the `Program.cs` file with a sample list of `TodoItem` objects
 * Rename the `Web` project's `Weather.razor` in the `Pages` directory to `Todos.razor`
 * Delete the `Counter.razor` and `Home.razor` files from the `Web` project's `Pages` folder
 * Change the `Web` project's `Layout/NavMenu.razor` so that it only has the `Home` link, deleting `Weather` and `Counter`, but change the link text to `Todo`
@@ -437,3 +437,248 @@ If you re-deploy the app now using the Provision & Deploy CI/CD action after com
 ### Storing data in a Postgres database
 
 In this final phase of the exercises, you'll add a persistent database to the equation so your todo data persists even when the app restarts.
+
+* Add a new Web API project, enlisting in Aspire orchestration (and uncheck controller usage so you get Minimal APIs) named `AspireTodo.TodoDatabaseManager`
+* Like with the `ApiService` project, remove all the "Weather" related code from the `Program.cs` when the project is added 
+* Add a reference to the Aspire component `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL` (version `8.0.0-preview.3.24105.21`). This will provide all of the data access services for your PostgreSQL database.
+* Add a reference to the NuGet package `Microsoft.EntityFrameworkCore.Design`. This enables migrations, EF Core's mechanism for tracking and deploying database changes.
+
+* Add a new file named `Todo.cs` to the `TodoDatabaseManager` project. Paste this code into that file for the entity definition:
+
+   ```csharp
+   namespace AspireTodo.TodoDatabaseManager;
+
+  public class Todo
+  {
+      public int Id { get; set; }
+      public string Description { get; set; }
+      public bool IsCompleted {    get; set; }
+  } 
+   ```
+
+* Create a new file named `TodoDatabaseDbContext.cs` and paste the following. Think of the `DbContext` as an interface for the API to manipulate your database:
+
+   ```csharp
+   using Microsoft.EntityFrameworkCore;
+   using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+  public class TodoDatabaseDbContext(DbContextOptions<TodoDatabaseDbContext> options) : DbContext(options)
+  {
+      public DbSet<Todo> TodoItems => Set<Todo>();
+
+      protected override void OnModelCreating(ModelBuilder builder)
+      {
+          DefineTodoType(builder.Entity<Todo>());
+      }
+
+      private static void DefineTodoType(EntityTypeBuilder<Todo> builder)
+      {
+          builder.ToTable("todo");
+
+          builder.HasKey(ci => ci.Id);
+
+          builder.Property(ci => ci.Id)
+              .UseHiLo("todo_type_hilo")
+              .IsRequired();
+
+          builder.Property(cb => cb.Description)
+              .IsRequired()
+              .HasMaxLength(128);
+      }
+  }
+  ```
+ 
+* Install the .NET EF tool by entering this command at your terminal:
+  ```text
+  dotnet tool install --global dotnet-ef --version 8.0.1
+  ```
+
+* In the `Program.cs` file for your API service, make the necessary changes to move from an in-memory cache to your database. First, remove the namespace and middleware configuration for the in-memory cache.
+   - Remove the using for `Microsoft.Extensions.Cache.Memory`
+   - Remove the line `builder.Services.AddMemoryCache()`
+   - Remove the command to seed the memory cache. This is multiple lines starting with `app.Services.GetRequiredService<IMemoryCache>`.
+
+* Wire in the database. After the `QueueWorker` is configured as a hosted service, inform DI about your database:
+
+   ```csharp
+   builder.AddNpgsqlDbContext<TodoDatabaseDbContext>("tododatabase");
+   ```
+
+* Update the `/todos` endpoint to use the database instead of the memory cahce:
+
+   ```csharp
+   app.MapGet("/todos", (TodoDatabaseDbContext ctx) => ctx.TodoItems.ToArray());
+
+* The asynchronous messaging service needs to be updated to process database records rather than using the in-memory cache. Replace the code in `QueueWorker.cs` to look like this instead:
+
+   ```csharp
+   using Azure.Storage.Queues;
+   using Azure.Storage.Queues.Models;
+
+   public class QueueWorker(QueueServiceClient queueServiceClient,
+      IServiceProvider serviceProvider,
+      ILogger<QueueWorker> logger) : BackgroundService
+  {
+      private QueueServiceClient queueServiceClient = queueServiceClient;
+      private readonly IServiceProvider serviceProvider = serviceProvider;
+      private readonly ILogger<QueueWorker> logger = logger;
+
+      public override async Task StartAsync(CancellationToken cancellationToken)
+      {
+          await queueServiceClient.GetQueueClient("incoming").CreateIfNotExistsAsync();
+          await base.StartAsync(cancellationToken);
+      }
+
+      protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+      {
+          using var scope = serviceProvider.CreateScope();
+          var todoDatabaseDbContext = scope.ServiceProvider.GetRequiredService<TodoDatabaseDbContext>();
+
+          while (!stoppingToken.IsCancellationRequested)
+          {
+              try
+              {
+                  // database might not be up yet
+                  var existingTodos = todoDatabaseDbContext.TodoItems.ToList();
+                  var queue = queueServiceClient.GetQueueClient("incoming");
+
+                  QueueMessage[] queuedMessages = await queue.ReceiveMessagesAsync(1,
+                      TimeSpan.FromSeconds(5));
+
+                  foreach (var message in queuedMessages)
+                  {
+                      if (message.DequeueCount <= 2)
+                      {
+                          if (existingTodos != null && !existingTodos.Any(x => x.Description.Equals(message.MessageText,
+                              StringComparison.InvariantCultureIgnoreCase)))
+                          {
+                              todoDatabaseDbContext.TodoItems.Add(new Todo { Description = message.MessageText, IsCompleted = false });
+                          }
+
+                          await queue.DeleteMessageAsync(message.MessageId, message.PopReceipt);
+                      }
+                  }
+                  await todoDatabaseDbContext.SaveChangesAsync();
+              } 
+              catch(Exception ex)
+              {
+                  logger.LogError(ex, "Error during startup");
+              }
+              
+              logger.LogInformation($"Worker running at {DateTime.Now}");
+
+              await Task.Delay(1000);
+          }
+      }
+  }
+   ```
+
+* Let's prepare the database for local testing and deployment. The first step is to create a snapshot of the database, called a "migration", for EF Core to use when creating the database or updating it to match a change to the schema. Create a new ASP.NET Core API web project and name it, `TodoDatabaseManager`. Include a refeence to the `TodoDatabase` project.
+
+* From the root of the `TodoDatabaseManager` project, run this command. It will take a snapshot of the database and create the code to define it, called a "migration."
+
+   ```text
+   dotnet ef migrations add InitialCreate
+   ```
+
+* Set up your database and populate the connection string in your app configuration. Under the connection strings section, add it like this:
+
+   ```json
+   "ConnectionStrings": {
+ 
+     // A connection string is here to enable use of the `dotnet ef` cmd line tool from the project root.
+     // If the configuration value is not present or not well-formed, the app will fail at startup.
+     // Note that some commands require the connection string to point to a real database in order to fully
+     // function (e.g. `dotnet ef database update`, `dotnet ef migrations list`).
+     "tododatabase": "Server=localhost;Port=5432;Database=NOT_A_REAL_DB"
+   ```
+
+* From the root of the `TodoDatabaseManager` project, run this command. It will take a snapshot of the database and create the code to define it, called a "migration."
+
+   ```text
+   dotnet ef migrations add InitialCreate
+   ```
+
+* Use the migration to create or update your database by running the command: 
+
+   ```text
+   dotnet ef database update
+   ```
+
+* Create the database initializer class as `DatabaseInitializer.cs`. This will run as a background service and create/seed the database when neccessary.
+
+   ```csharp
+    using System.Diagnostics;
+    using Microsoft.EntityFrameworkCore;
+
+    namespace AspireTodo.TodoDatabaseManager;
+
+    public class DatabaseInitializer(IServiceProvider serviceProvider,
+        ILogger<DatabaseInitializer> logger) : BackgroundService
+    {
+        public const string ActivitySourceName = "Migrations";
+        private readonly ActivitySource _activitySource = new(ActivitySourceName);
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<TodoDatabaseDbContext>();
+
+            await InitializeDatabaseAsync(dbContext, stoppingToken);
+        }
+
+        private async Task InitializeDatabaseAsync(TodoDatabaseDbContext dbContext, CancellationToken cancellationToken)
+        {
+            using var activity = _activitySource.StartActivity("Initializing catalog database", ActivityKind.Client);
+
+            var sw = Stopwatch.StartNew();
+
+            var strategy = dbContext.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(dbContext.Database.MigrateAsync, cancellationToken);
+
+            await SeedAsync(dbContext, cancellationToken);
+
+            logger.LogInformation("Database initialization completed after {ElapsedMilliseconds}ms", sw.ElapsedMilliseconds);
+        }
+
+        private async Task SeedAsync(TodoDatabaseDbContext dbContext, CancellationToken cancellationToken)
+        {
+            logger.LogInformation("Seeding database");
+
+            var todos = new List<Todo>
+            {
+                new Todo {  Description = "Build the API", IsCompleted = false },
+                new Todo {  Description = "Build the Frontend", IsCompleted = false },
+                new Todo {  Description = "Deploy the app", IsCompleted = false }
+            };
+
+            if (!dbContext.TodoItems.Any())
+            {
+                logger.LogInformation("Seeding todo items");
+                await dbContext.TodoItems.AddRangeAsync(todos, cancellationToken);
+                logger.LogInformation("Seeded todo items");
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
+    }
+   ```
+
+* Update `Program.cs` by including this code after the c all to `AddServiceDefaults`. This code registers the database and informs EF Core where to find the migrations that define it. It then adds telemetry and configures a call to the initializer through a background service.
+
+   ```csharp
+    // Add the database context
+    builder.AddNpgsqlDbContext<TodoDatabaseDbContext>("tododatabase", null,
+        optionsBuilder => optionsBuilder.UseNpgsql(npgsqlBuilder =>
+            npgsqlBuilder.MigrationsAssembly(typeof(Program).Assembly.GetName().Name)));
+
+    // Add OTel, and wire up the database initialization's "migration" activity
+    builder.Services.AddOpenTelemetry()
+        .WithTracing(tracing => tracing.AddSource(DatabaseInitializer.ActivitySourceName));
+
+    // Add the database initialization service as a background worker
+    builder.Services.AddSingleton<DatabaseInitializer>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<DatabaseInitializer>());
+   ```
+
+Rock and roll!
+

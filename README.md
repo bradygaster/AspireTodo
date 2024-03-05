@@ -12,7 +12,7 @@ These are the high-level steps you'll perform on Day 1.
 
 You'l create a basic project and then learn how to run it and examine how the app is running using the .NET Aspire dashboard. 
 
-* Create a new Aspire Starter project without the Redis Output Caching enabled 
+* Create a new Aspire Starter project with the Redis Output Caching enabled 
 * Run the app to see the Aspire Dashboard 
 * Run through the various ways of looking at console logs for each project 
 * Observe how the Trace node provides distributed tracing as users hit the frontend of the site
@@ -26,15 +26,142 @@ Next, you'll start editing the code to turn it into your very own Todo app.
 
 In this phase, you'll make some basic modifications to the backend API and frontend Web project to turn the template's content into a real Todo app. 
 
-* Change `WeatherApiClient` to `TodoApiClient`
-* Reflect the type name change in the `Web` project's `Program.cs` during build-up
-* Change the `WeatherForecast` record types in both the `ApiService` project and the `Web` project into `TodoItem` record types, with a `Description` string property and a `IsCompleted` bool property
-* Change the `ApiService` project's `Program.cs` such that it returns a `List<TodoItem>` at the endpoint `/todos` and build the list in the `Program.cs` file with a sample list of `TodoItem` objects
-* Rename the `Web` project's `Weather.razor` in the `Pages` directory to `Todos.razor`
+* In the `ApiService` project's `Program.cs`, delete the `summaries` variable, as well as the sole call to `app.MapGet`, and delete the `WeatherForecast` C# `record` from the class to remove the template's sample code
+* Add this code to create a new `TodoItem` type at the bottom of the `ApiService` project's `Program.cs` file:
+
+  ```csharp
+  // how the API models a TodoItem object
+  record TodoItem(string Description, bool IsCompleted) { }
+  ```
+
+* Add code before the `app.MapDefaultEndpoints()` call in the `ApiService` project's `Program.cs` to build a static list of `TodoItem` instances and return them via an HTTP endpoint:
+
+  ```csharp
+  // A static list of TodoItems to get us started
+  List<TodoItem> todoItems = new List<TodoItem>
+  {
+      new("Build the API", false),
+      new("Build the Frontend", false),
+      new("Deploy the app", false)
+  };
+
+  // Http Api that returns the full list of todos.
+  app.MapGet("/todos", () => todoItems);
+  ```
+
+* Rename the `Web` project's `WeatherApuiClient.cs`, to `TodoApiClient.cs`, and change the code in the file to be this code:
+
+  ```csharp
+  namespace AspireTodo.Web;
+
+  public class TodoApiClient(HttpClient httpClient)
+  {
+      public async Task<TodoItem[]> GetAllTodoItems()
+      {
+          return await httpClient.GetFromJsonAsync<TodoItem[]>("/todos") ?? [];
+      }
+  }
+
+  public record TodoItem(string Description, bool IsCompleted) { }
+
+  ```
+
+* Reflect the type name change in the `Web` project's `Program.cs` during build-up by changing this line:
+
+  ```csharp
+  builder.Services.AddHttpClient<WeatherApiClient>(client => client.BaseAddress = new("http://apiservice"));
+  ```
+
+  to this:
+
+  ```csharp
+  builder.Services.AddHttpClient<TodoApiClient>(client => client.BaseAddress = new("http://apiservice"));
+  ```
+
+* Rename the `Web` project's `Weather.razor` in the `Pages` directory to `Todo.razor` and change the code in the resulting `Todo.razor` from this:
+
+  ```csharp
+  @page "/weather"
+  @attribute [StreamRendering(true)]
+  @attribute [OutputCache(Duration = 5)]
+
+  @inject TodoApiClient WeatherApi
+  ```
+
+  to this:
+
+  ```csharp
+  @page "/"
+  @rendermode InteractiveServer
+  @inject TodoApiClient TodoApiClient
+  ```
+
+* Change the `Web` project's `Layout/NavMenu.razor` so that it only has the `Home` link, deleting `Weather` and `Counter`, but change the link text to `Todo`:
+
+  ```html
+  <div class="top-row ps-3 navbar navbar-dark">
+      <div class="container-fluid">
+          <a class="navbar-brand" href="">AspireTodo</a>
+      </div>
+  </div>
+
+  <input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+  <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+      <nav class="flex-column">
+          <div class="nav-item px-3">
+              <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                  <span class="bi bi-house-door-fill" aria-hidden="true"></span> Todo
+              </NavLink>
+          </div>
+      </nav>
+  </div>
+
+  ```
+
+* Edit the `Web` project's `Pages/Todo.razor` file to display `TodoItem` objects instead of the old `WeatherForecast` objects, using the `TodoApiClient` class instead of the `WeatherApiClient` class:
+
+  ```html
+  <PageTitle>AspireTodo</PageTitle>
+
+  <h1>Todo</h1>
+
+  <p>Below are all of the items you AspireTodo.</p>
+
+  @if (todos == null)
+  {
+      <p><em>Loading...</em></p>
+  }
+  else
+  {
+      <table class="table">
+          <thead>
+              <tr>
+                  <th>Todo</th>
+              </tr>
+          </thead>
+          <tbody>
+              @foreach (var todo in todos)
+              {
+                  <tr>
+                      <td>@todo.Description</td>
+                  </tr>
+              }
+          </tbody>
+      </table>
+  }
+
+  @code {
+      private TodoItem[]? todos;
+
+      protected override async Task OnInitializedAsync()
+      {
+          todos = await TodoApiClient.GetAllTodoItems();
+      }
+  }
+  ```
+
 * Delete the `Counter.razor` and `Home.razor` files from the `Web` project's `Pages` folder
-* Change the `Web` project's `Layout/NavMenu.razor` so that it only has the `Home` link, deleting `Weather` and `Counter`, but change the link text to `Todo`
-* Edit the `Web` project's `Pages/Todo.razor` file to display `TodoItem` objects instead of the old `WeatherForecast` objects, using the `TodoApiClient` class instead of the `WeatherApiClient` class
-* Edit the `Web` project's `Pages/Todo.razor` file such that it is what renders in the browser when the `/` (root) endpoint is called from a web browser
 
 With these changes made, you're ready to deploy the app right up to Azure to get started learning the platform's components. 
 
@@ -99,6 +226,8 @@ In this phase you'll automate the process of building the `AspireTodo` source co
 * Browse to the `Actions` tab in GitHub and watch your continuous integration build your app
 
 At this point, make sure you clone your changes back to your DevBox or Virtual Machine, so you have the changes you just made in the browser back down on your workstation. 
+
+> Note: You may have changes locally in addition to the change to activate continuous integration. If so, add and commit the `azure.yaml` file, and add the `.azure` folder to your `.gitignore` file. Then perform a commit-and-push and then a pull to synchronize the local changes with the remote changes. 
 
 ---
 
@@ -212,6 +341,7 @@ In this phase, you'll add messaging to the app so the frontend can be used to ad
 
   ```csharp
   var builder = DistributedApplication.CreateBuilder(args);
+  var cache = builder.AddRedis("cache");
 
   var storage = builder.AddAzureStorage("storage").UseEmulator();
 
@@ -221,6 +351,7 @@ In this phase, you'll add messaging to the app so the frontend can be used to ad
       .WithReference(queues);
 
   var frontend = builder.AddProject<Projects.AspireTodo_Web>("webfrontend")
+      .WithReference(cache)
       .WithReference(queues)
       .WithReference(apiService);
 
@@ -245,6 +376,7 @@ In this phase, you'll add code to the frontend project that will accept user inp
 
   // Add Storage Queue Support
   builder.AddAzureQueueService("queues");
+  builder.AddRedisOutputCache("cache");
   ```
 
 * In the `Web` project's `Componentns\Pages\Todo.razor` file, replace the code you have with this update: 
@@ -327,7 +459,7 @@ Now that you've added Azure Storage, when you re-run your Provision & Deploy Git
 
 In this phase, you'll add code to the backend project to start receiving the queued messages, so they can be added to the list of todo items asynchronously. 
 
-* First, add memory cache to the backend project, and use it to store the list of todo items rather than storing it as a variable in the `Program.cs` by changing the code in the `ApiService` project's `Program.cs` file to contain this code:
+* First, add memory cache to the `ApiService` project, and use it to store the list of todo items rather than storing it as a variable in the `Program.cs` by changing the code in the `ApiService` project's `Program.cs` file to contain this code:
 
   ```csharp
   using Microsoft.Extensions.Caching.Memory;
@@ -339,6 +471,9 @@ In this phase, you'll add code to the backend project to start receiving the que
 
   // Add memory caching to store the todos on the server for now
   builder.Services.AddMemoryCache();
+
+  // Add Azure Storage Queues
+  builder.AddAzureQueueService("queues");
 
   // Add services to the container.
   builder.Services.AddProblemDetails();
@@ -356,7 +491,7 @@ In this phase, you'll add code to the backend project to start receiving the que
   });
 
   // Http Api that returns the full list of todos.
-  app.MapGet("/todos", (IMemoryCache memoryCache) => memoryCache.Get<TodoItem[]>("todos"));
+  app.MapGet("/todos", (IMemoryCache memoryCache) => memoryCache.Get<List<TodoItem>>("todos"));
 
   app.MapDefaultEndpoints();
 
@@ -421,7 +556,7 @@ In this phase, you'll add code to the backend project to start receiving the que
   }
   ```
 
-* The final step you need to complete to start processing incoming messages is to use the `QueueService` class as a hosted service in the `apiservice` project's `Program.cs`. To do this, add this code after the call to `builder.AddAzureQueueService`:
+* The final step you need to complete to start processing incoming messages is to use the `QueueService` class as a hosted service in the `ApiService` project's `Program.cs`. To do this, add this code after the call to `builder.AddAzureQueueService`:
 
   ```csharp
   // Add the QueueWorker
@@ -438,25 +573,19 @@ If you re-deploy the app now using the Provision & Deploy CI/CD action after com
 
 In this final phase of the exercises, you'll add a persistent database to the equation so your todo data persists even when the app restarts.
 
-* Add a new Web API project, enlisting in Aspire orchestration (and uncheck controller usage so you get Minimal APIs) named `AspireTodo.TodoDatabaseManager`
-* Like with the `ApiService` project, remove all the "Weather" related code from the `Program.cs` when the project is added 
-* Add a reference to the Aspire component `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL` (version `8.0.0-preview.3.24105.21`). This will provide all of the data access services for your PostgreSQL database.
-* Add a reference to the NuGet package `Microsoft.EntityFrameworkCore.Design`. This enables migrations, EF Core's mechanism for tracking and deploying database changes.
-
-* Add a new file named `Todo.cs` to the `TodoDatabaseManager` project. Paste this code into that file for the entity definition:
+* Add a new Class Library project named `AspireTodo.TodoDatabase` to the solution
+* Add a new file named `Todo.cs` to the `TodoDatabase` project. Paste this code into that file for the entity definition:
 
    ```csharp
-   namespace AspireTodo.TodoDatabaseManager;
-
   public class Todo
   {
       public int Id { get; set; }
-      public string Description { get; set; }
-      public bool IsCompleted {    get; set; }
+      public string Description { get; set; } = string.Empty;
+      public bool IsCompleted { get; set; }
   } 
    ```
-
-* Create a new file named `TodoDatabaseDbContext.cs` and paste the following. Think of the `DbContext` as an interface for the API to manipulate your database:
+* Add a reference in the `TodoDatabase` project to the Aspire component `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL` (version `8.0.0-preview.3.24105.21`). This will provide all of the data access services for your PostgreSQL database.
+* Create a new file named `TodoDatabaseDbContext.cs` in the `TodoDatabase` project and paste the following. Think of the `DbContext` as an interface for the API to manipulate your database:
 
    ```csharp
    using Microsoft.EntityFrameworkCore;
@@ -487,8 +616,13 @@ In this final phase of the exercises, you'll add a persistent database to the eq
       }
   }
   ```
- 
+
+* Add a new Web API project, enlisting in Aspire orchestration (and uncheck controller usage so you get Minimal APIs) named `AspireTodo.TodoDatabaseManager`
+* Like with the `ApiService` project, remove all the "Weather" related code from the `Program.cs` when the project is added 
+* Add a reference to the Aspire component `Aspire.Npgsql.EntityFrameworkCore.PostgreSQL` (version `8.0.0-preview.3.24105.21`). This will provide all of the data access services for your PostgreSQL database.
+* Add a reference to the NuGet package `Microsoft.EntityFrameworkCore.Design` (version `8.0.1`). This enables migrations, EF Core's mechanism for tracking and deploying database changes.
 * Install the .NET EF tool by entering this command at your terminal:
+
   ```text
   dotnet tool install --global dotnet-ef --version 8.0.1
   ```
@@ -498,6 +632,7 @@ In this final phase of the exercises, you'll add a persistent database to the eq
    - Remove the line `builder.Services.AddMemoryCache()`
    - Remove the command to seed the memory cache. This is multiple lines starting with `app.Services.GetRequiredService<IMemoryCache>`.
 
+* Add a reference from the `ApiService` project to the `TodoDatabase` project
 * Wire in the database. After the `QueueWorker` is configured as a hosted service, inform DI about your database:
 
    ```csharp

@@ -729,12 +729,6 @@ In this final phase of the exercises, you'll add a persistent database to the eq
    dotnet ef migrations add InitialCreate
    ```
 
-* Use the migration to create or update your database by running the command: 
-
-   ```text
-   dotnet ef database update
-   ```
-
 * Create the database initializer class as `DatabaseInitializer.cs`. This will run as a background service and create/seed the database when neccessary.
 
    ```csharp

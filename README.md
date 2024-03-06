@@ -94,6 +94,7 @@ In this phase, you'll make some basic modifications to the backend API and front
   @page "/"
   @rendermode InteractiveServer
   @inject TodoApiClient TodoApiClient
+  @using AspireTodo.Web
   ```
 
 * Change the `Web` project's `Layout/NavMenu.razor` so that it only has the `Home` link, deleting `Weather` and `Counter`, but change the link text to `Todo`:

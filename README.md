@@ -709,24 +709,18 @@ In this final phase of the exercises, you'll add a persistent database to the eq
   }
    ```
 
-* Let's prepare the database for local testing and deployment. The first step is to create a snapshot of the database, called a "migration", for EF Core to use when creating the database or updating it to match a change to the schema. Create a new ASP.NET Core API web project and name it, `TodoDatabaseManager`. Include a refeence to the `TodoDatabase` project.
+* Let's prepare the database for local testing and deployment. The first step is to create a snapshot of the database, called a "migration", for EF Core to use when creating the database or updating it to match a change to the schema. Create a new ASP.NET Core API web project and name it, `TodoDatabaseManager`. Include a reference to the `TodoDatabase` project.
 
-* From the root of the `TodoDatabaseManager` project, run this command. It will take a snapshot of the database and create the code to define it, called a "migration."
-
-   ```text
-   dotnet ef migrations add InitialCreate
-   ```
-
-* Set up your database and populate the connection string in your app configuration. Under the connection strings section, add it like this:
+* In the `TodoDatabaseManager` project, set up your database's connection string in your app configuration (`appsettings.json`). Under the connection strings section, add it like this:
 
    ```json
    "ConnectionStrings": {
- 
      // A connection string is here to enable use of the `dotnet ef` cmd line tool from the project root.
      // If the configuration value is not present or not well-formed, the app will fail at startup.
      // Note that some commands require the connection string to point to a real database in order to fully
      // function (e.g. `dotnet ef database update`, `dotnet ef migrations list`).
      "tododatabase": "Server=localhost;Port=5432;Database=NOT_A_REAL_DB"
+   }
    ```
 
 * From the root of the `TodoDatabaseManager` project, run this command. It will take a snapshot of the database and create the code to define it, called a "migration."

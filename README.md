@@ -49,7 +49,7 @@ In this phase, you'll make some basic modifications to the backend API and front
   app.MapGet("/todos", () => todoItems);
   ```
 
-* Rename the `Web` project's `WeatherApuiClient.cs`, to `TodoApiClient.cs`, and change the code in the file to be this code:
+* Rename the `Web` project's `WeatherApiClient.cs`, to `TodoApiClient.cs`, and change the code in the file to be this code:
 
   ```csharp
   namespace AspireTodo.Web;
